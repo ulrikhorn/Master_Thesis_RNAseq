@@ -1,0 +1,102 @@
+---
+title: "wildtype_db"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(BiocManager)
+library(DESeq2)
+library(tidyverse)
+```
+
+
+Converting the metadata into csv to be read into R
+
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7710011/
+
+```{bash}
+# Remove brackets and make tab delimiter between columns
+cat index_merged_counts | sed 's/[][]//g' | sed 's/ /,/g' | sed 's/\t/,/g' > index_merged_counts_corrected
+cat index_merged_counts_corrected
+```
+
+Reading metadata file into R
+
+```{r}
+metadata <- read.csv("index_merged_counts_corrected", col.names = c("Geo_ID", "Treatment", "Sample_ID"))
+
+metadata <- metadata[c(3,2,1)]
+metadata
+
+
+countData
+```
+Reading in the count data without row names. This way gives the "some values in assay are not integers" error
+
+Only one of these functions should be used at a time.
+
+```{r}
+countDataWT <- read.csv("merged_counts.txt", sep = "\t", header = TRUE)
+
+
+countDataWT <- countDataWT %>% mutate_at(vars(-ensgene), funs(round(., 0)))
+
+countDataWT
+```
+
+
+Making DESeq2 data set
+
+values must be rounded 
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = countDataWT, 
+                              colData = metadata, 
+                              design = ~Treatment, 
+                              tidy = TRUE)
+```
+
+```{r}
+dds <- DESeq(dds)
+```
+
+
+```{r}
+res <- results(dds)
+head(results(dds, tidy=TRUE)) #let's look at the results table
+```
+
+```{r}
+summary(res) #summary of results
+```
+
+```{r}
+res <- res[order(res$padj),]
+head(res)
+```
+
+```{r}
+#First we need to transform the raw count data
+#vst function will perform variance stabilizing transformation
+
+vsdata <- vst(dds, blind=FALSE)
+```
+
+
+```{r}
+plotPCA(vsdata, intgroup="Treatment") #using the DESEQ2 plotPCA fxn we can
+```
+
+
+```{r}
+#reset par
+par(mfrow=c(1,1))
+# Make a basic volcano plot
+with(res, plot(log2FoldChange, -log10(pvalue), pch=20, main="Volcano plot", xlim=c(-3,3)))
+
+# Add colored points: blue if padj<0.01, red if log2FC>1 and padj<0.05)
+with(subset(res, padj<.01 ), points(log2FoldChange, -log10(pvalue), pch=20, col="blue"))
+with(subset(res, padj<.01 & abs(log2FoldChange)>2), points(log2FoldChange, -log10(pvalue), pch=20, col="red"))
+```
+
